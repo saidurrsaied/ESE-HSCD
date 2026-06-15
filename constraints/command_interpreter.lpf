@@ -1,0 +1,100 @@
+## ==========================================================================
+##  command_interpreter.lpf  -  Lattice Diamond pin constraints
+##  Board : XP2-17  (LFXP2-17E-5QN208C, TQFP-208)
+##  Top   : command_interpreter_top
+##
+##  All pin SITE numbers are taken from the "XP2-17 FPGA Board" reference.
+##  All I/O is 3.3 V LVCMOS (board doc, section 1).
+##
+##  NOTE: The component names below (e.g. "dip_switch[0]") must match the
+##        top-level entity port names exactly. If you rename a port, fix it
+##        here too.
+## ==========================================================================
+
+## --- global default I/O standard ------------------------------------------
+IOBUF ALLPORTS IO_TYPE=LVCMOS33 ;
+
+## ==========================================================================
+##  Clock  (24 MHz on-board oscillator, site 53)
+## ==========================================================================
+LOCATE COMP "clk_in" SITE "53" ;
+FREQUENCY PORT "clk_in" 24.000000 MHz ;
+
+## ==========================================================================
+##  Push buttons  (NO = normally-open contact)
+##   btn_start_stop = S1 NO (17), btn_display_sel = S2 NO (19),
+##   btn_reset = S4 NO (30)
+##  (NC contacts 18/20/23/31 are available too if you want HW debounce.)
+## ==========================================================================
+LOCATE COMP "btn_start_stop"  SITE "17" ;
+LOCATE COMP "btn_display_sel" SITE "19" ;
+LOCATE COMP "btn_reset"       SITE "30" ;
+
+## ==========================================================================
+##  DIP switches  (sites 41,40,39,36,35,34,33,32 = switch 1..8)
+##   dip_switch[0] = switch 1 ... dip_switch[7] = switch 8
+## ==========================================================================
+LOCATE COMP "dip_switch[0]" SITE "41" ;
+LOCATE COMP "dip_switch[1]" SITE "40" ;
+LOCATE COMP "dip_switch[2]" SITE "39" ;
+LOCATE COMP "dip_switch[3]" SITE "36" ;
+LOCATE COMP "dip_switch[4]" SITE "35" ;
+LOCATE COMP "dip_switch[5]" SITE "34" ;
+LOCATE COMP "dip_switch[6]" SITE "33" ;
+LOCATE COMP "dip_switch[7]" SITE "32" ;
+
+## ==========================================================================
+##  LED row  (sites 93,94,97,98,101,102,103,104 = led 0..7)
+## ==========================================================================
+LOCATE COMP "led[0]" SITE "93"  ;
+LOCATE COMP "led[1]" SITE "94"  ;
+LOCATE COMP "led[2]" SITE "97"  ;
+LOCATE COMP "led[3]" SITE "98"  ;
+LOCATE COMP "led[4]" SITE "101" ;
+LOCATE COMP "led[5]" SITE "102" ;
+LOCATE COMP "led[6]" SITE "103" ;
+LOCATE COMP "led[7]" SITE "104" ;
+
+## ==========================================================================
+##  7-segment display - LEFT digit
+##   bit order: 0=a 1=b 2=c 3=d 4=e 5=f 6=g 7=dp
+## ==========================================================================
+LOCATE COMP "seg_left[0]" SITE "121" ;  ## a
+LOCATE COMP "seg_left[1]" SITE "118" ;  ## b
+LOCATE COMP "seg_left[2]" SITE "120" ;  ## c
+LOCATE COMP "seg_left[3]" SITE "124" ;  ## d
+LOCATE COMP "seg_left[4]" SITE "136" ;  ## e
+LOCATE COMP "seg_left[5]" SITE "122" ;  ## f
+LOCATE COMP "seg_left[6]" SITE "134" ;  ## g
+LOCATE COMP "seg_left[7]" SITE "116" ;  ## dp
+
+## ==========================================================================
+##  7-segment display - RIGHT digit
+## ==========================================================================
+LOCATE COMP "seg_right[0]" SITE "111" ;  ## a
+LOCATE COMP "seg_right[1]" SITE "106" ;  ## b
+LOCATE COMP "seg_right[2]" SITE "110" ;  ## c
+LOCATE COMP "seg_right[3]" SITE "113" ;  ## d
+LOCATE COMP "seg_right[4]" SITE "115" ;  ## e
+LOCATE COMP "seg_right[5]" SITE "112" ;  ## f
+LOCATE COMP "seg_right[6]" SITE "114" ;  ## g
+LOCATE COMP "seg_right[7]" SITE "105" ;  ## dp
+
+## ==========================================================================
+##  PMOD / external logic connector  (OUTPUT ONLY, 3.3 V)
+##
+##  !!! TENTATIVE PIN NUMBERS !!!
+##  The board doc (section 10) says: "The exact mapping of the 8 logic
+##  signals depends on the current hardware configuration and is eventually
+##  provided separately."  The sites below are picked from the connector
+##  header pins shown in the doc, but MUST be confirmed with the lab
+##  assistant before programming the board. Update if needed.
+## ==========================================================================
+LOCATE COMP "pmod[0]" SITE "81" ;  ## TODO confirm
+LOCATE COMP "pmod[1]" SITE "82" ;  ## TODO confirm
+LOCATE COMP "pmod[2]" SITE "83" ;  ## TODO confirm
+LOCATE COMP "pmod[3]" SITE "84" ;  ## TODO confirm
+LOCATE COMP "pmod[4]" SITE "85" ;  ## TODO confirm
+LOCATE COMP "pmod[5]" SITE "86" ;  ## TODO confirm
+LOCATE COMP "pmod[6]" SITE "87" ;  ## TODO confirm
+LOCATE COMP "pmod[7]" SITE "88" ;  ## TODO confirm

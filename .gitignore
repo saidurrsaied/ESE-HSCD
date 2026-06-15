@@ -1,0 +1,52 @@
+# ==========================================================================
+#  .gitignore  -  ESE-HSCD : Command Interpreter for DIP-Switch Commands
+# ==========================================================================
+
+# ---- requested by the team -------------------------------------------------
+CLAUDE.md
+*.pdf
+bachelor_project-main/
+
+# ---- reference / scratch material ------------------------------------------
+docs/*.pdf
+
+# ==========================================================================
+#  Lattice Diamond generated / build artefacts
+#  (we only want to track our own VHDL, the LPF and the docs in git -
+#   everything Diamond generates can be re-created from those.)
+# ==========================================================================
+*.dir/
+*_impl1/
+*.bit
+*.jed
+*.sed
+*.bgn
+*.rpt
+*.ngd
+*.ngo
+*.naf
+*.tw1
+*.par
+*.pad
+*.prf
+*.sso
+*.twr
+*.area
+*.html
+*.xml.bak
+reveal_workspace/
+synwork/
+synlog/
+*.srr
+*.srd
+*.srm
+*.sap
+run.log
+*.log
+
+# ---- editor / OS junk ------------------------------------------------------
+*.bak
+*~
+.DS_Store
+Thumbs.db
+.vscode/
