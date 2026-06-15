@@ -3,7 +3,7 @@
 Group project for *Microelectronics & HW/SW Co-Design (ESE)*.
 Target board: **Lattice XP2-17** (`LFXP2-17E-5QN208C`, TQFP-208), toolchain: **Lattice Diamond**, language: **VHDL**.
 
-## The task (topic, homework page 10)
+## Task Description
 
 > The FPGA interprets the DIP-switch setting as a **command**. A push button **loads and executes** the selected command. The command **repeats with a selectable frequency** until the push button is pressed again.
 
