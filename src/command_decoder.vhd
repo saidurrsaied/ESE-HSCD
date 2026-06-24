@@ -4,24 +4,26 @@
 --
 --  This is purely COMBINATIONAL. It does NOT store anything; storing the
 --  chosen command happens later in command_register (only when the user
---  presses the button). The FSM decides WHEN to latch.
+--  presses the button in the ENTER_CMD phase). The FSM decides WHEN to latch.
 --
---  RECOMMENDED DIP-SWITCH MAPPING  (you may change it - just keep this
---  comment and doc/requirements.md in sync!):
+--  It works on the polarity-CORRECTED DIP word (the top level feeds it
+--  `dip_logic`, i.e. active-high), so '1' here always means "switch up".
 --
---      dip(7 downto 5) : command select (3 bits -> 8 commands)
---                          000 LOAD     001 CLEAR
---                          010 COUNT_UP 011 COUNT_DOWN
---                          100 SHIFT    101 ROTATE
---                          110 HOLD     111 RESET
+--  DIP-SWITCH MAPPING in the ENTER_CMD phase:
+--
+--      dip(7 downto 5) : command select  -> CMD_CODE (3 bits = 8 commands)
+--                          000 LOAD       001 CLEAR
+--                          010 COUNT_UP   011 COUNT_DOWN
+--                          100 SHIFT_LEFT 101 ROTATE_LEFT
+--                          110 INVERT     111 HOLD
 --      dip(4 downto 3) : FREQ_SEL  (repeat rate for tick_generator)
---      dip(2 downto 0) : payload nibble for the LOAD command
---                          (zero-extended to 8 bit; or wire the whole
---                           dip word as payload - your design choice)
+--      dip(7 downto 0) : whole word -> PAYLOAD (used by CMD_LOAD)
 --
---  Board note (section 5): DIP lower position = logic '0', upper = '1',
---  internal pull-ups. Verify the real polarity on hardware before trusting
---  the numbers above.
+--  (In the ENTER_DATA phase the same 8 switches are the data value; that
+--  path goes straight to the data register, not through here.)
+--
+--  Board note: this board's DIP switches are active-LOW, but that is already
+--  undone upstream (DIP_ON='0' -> top inverts), so decode as active-high.
 --
 --  OWNER: Person B (Core Logic)
 -- ##########################################################################
@@ -46,13 +48,13 @@ begin
 
     -------------------------------------------------------------------
     -- IMPLEMENTATION GUIDE (Person B):
-    --   * Look at DIP_VALUE(7 downto 5) and map each pattern to a CMD_*
-    --     constant from command_pkg (use a case statement).
-    --   * Set CMD_VALID = '1' for every recognised pattern. (With a full
-    --     3-bit -> 8-command map every pattern is valid; CMD_VALID still
-    --     useful if you later use fewer than 8 commands.)
-    --   * FREQ_SEL  <= DIP_VALUE(4 downto 3);
-    --   * PAYLOAD    <= "00000" & DIP_VALUE(2 downto 0);  -- or full word
+    --   * CMD_CODE  <= DIP_VALUE(7 downto 5);   -- top 3 switches = command
+    --   * FREQ_SEL  <= DIP_VALUE(4 downto 3);   -- next 2 = speed
+    --   * PAYLOAD   <= DIP_VALUE;               -- whole word (CMD_LOAD uses it)
+    --   * CMD_VALID <= '1';                     -- every 3-bit code is valid here
+    --   (Simple direct slicing - no case statement needed because all 8
+    --    codes map 1:1. Keep CMD_VALID as a port in case you later reserve
+    --    some patterns.)
     -------------------------------------------------------------------
 
     -- TODO: replace these safe defaults with the real decode logic

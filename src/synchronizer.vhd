@@ -11,6 +11,15 @@
 --  This module is generic in width so it can synchronize a single button
 --  (WIDTH = 1) or the whole DIP-switch word (WIDTH = 8) in one instance.
 --
+--  WHY TWO FLIP-FLOPS: ff1 may go metastable when ASYNC_IN changes near the
+--  clock edge; the SECOND flip-flop gives ff1 a full clock period to resolve
+--  before anything downstream sees it, so ff1's only load is ff2. The
+--  `SYNC_OUT <= ff2` line is just a wire (ff2 is already registered), not a
+--  third sampling stage. Caveat: a 2-FF sync is correct for single bits and
+--  for SLOW/quasi-static buses like DIP switches; it does not guarantee all
+--  bits of a fast-changing bus update on the same cycle. It also does NOT
+--  fix polarity - the top level does that (DIP_ON) - or debounce.
+--
 --  OWNER: Person A (Input & Timing)
 -- ##########################################################################
 

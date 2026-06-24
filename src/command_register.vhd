@@ -5,10 +5,10 @@
 --  The homework says: "The selected command shall be stored in a command
 --  register before execution." That is exactly this module.
 --
---  When LOAD_EN = '1' (the FSM pulses it for one clock when the user
---  presses the button) the current decoder outputs are captured and then
---  held, so the user is free to change the DIP switches afterwards without
---  disturbing the running command.
+--  When LOAD_EN = '1' (the FSM pulses CMD_LOAD_EN for one clock when the
+--  user presses in the ENTER_CMD phase) the current decoder outputs are
+--  captured and then held, so the user is free to change the DIP switches
+--  afterwards (and READY/RUN ignore them) without disturbing the command.
 --
 --  OWNER: Person B (Core Logic)
 -- ##########################################################################

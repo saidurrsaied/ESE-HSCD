@@ -4,23 +4,28 @@
 --  Target board: Lattice XP2-17  (LFXP2-17E-5QN208C),  Lattice Diamond
 --
 --  This is the entity the LPF pin-constraints file maps to. It only WIRES
---  the sub-modules together; there is (almost) no logic in here. The real
---  work lives in the sub-modules, which the three of us own:
+--  the sub-modules together and applies the board POLARITY. The three of us
+--  own the sub-modules:
 --
 --     Person A : synchronizer, debouncer, edge_detector, tick_generator
 --     Person B : command_decoder, command_register, data_register,
 --                execution_fsm
 --     Person C : display_driver, pmod_out, this top level, LPF, testbench
 --
+--  OPERATING MODEL: "program, then run" in four phases driven by S1
+--  (see command_pkg header). ENTER_DATA -> ENTER_CMD -> READY -> RUN.
+--
 --  DATA FLOW (overview):
 --
---    DIP --> sync --> command_decoder --> command_register --+--> execution_fsm
---                                                            |        |
---    btn S1 --> sync --> debounce --> edge --> start/stop ---+        | op_en/op_code
---                                                                     v
---                                              tick_generator --> data_register --> LEDs
---                                                                     |
---                              status signals --> display_driver (7-seg) & pmod_out
+--    DIP --sync--> dip_logic --+--> command_decoder --> command_register --+
+--      (active-low, inverted)   |                                          |
+--                               +--> data_register.DATA_IN (ENTER_DATA)    |
+--    S1 --sync-deb-edge--> PRESS ----> execution_fsm <----- tick_generator-+
+--                                         | data_load_en / op_en / op_code
+--                                         v
+--                                     data_register --> LEDs (LED_ON polarity)
+--                                         |
+--                  state_code + cmd/freq --> display_driver (7-seg) & pmod_out
 --
 --  OWNER: Person C (Output & Integration), but everyone reads it.
 -- ##########################################################################
@@ -32,9 +37,9 @@ use work.command_pkg.all;
 
 entity command_interpreter_top is
     generic (
-        -- Real board = 24 MHz. A testbench may override this with a small
-        -- value (e.g. 1000) so the tick generator divides down quickly and
-        -- the simulation does not take forever.
+        -- Real board = 24 MHz. A testbench overrides this with a small value
+        -- (e.g. 200) so the tick generator and the ~10 ms debounce divide
+        -- down quickly and the simulation finishes in microseconds.
         CLK_HZ : natural := SYS_CLK_HZ
     );
     Port (
@@ -45,22 +50,24 @@ entity command_interpreter_top is
 
         ------------------------------------------------------------------
         -- Push buttons  (NO = normally-open contact of the change-over switch)
-        --   btn_start_stop : S1 NO, site 17  -> start / stop the execution
-        --   btn_display_sel: S2 NO, site 19  -> switch 7-seg view
-        --   btn_reset      : S4 NO, site 30  -> synchronous reset
-        -- (S3 is left as a spare for now.)
+        --   btn_start_stop : S1 NO, site 17  -> the ONE operating button
+        --                    (advance phase / start / stop)
+        --   btn_display_sel: S2 NO, site 19  -> optional alternate RUN view
+        --   btn_reset      : S4 NO, site 30  -> synchronous reset to ENTER_DATA
         ------------------------------------------------------------------
         btn_start_stop  : in  std_logic;
         btn_display_sel : in  std_logic;
         btn_reset       : in  std_logic;
 
         ------------------------------------------------------------------
-        -- DIP switches (8) - the "command word".  dip_switch(0)=S1..(7)=S8
+        -- DIP switches (8) - data value (ENTER_DATA) or command+speed
+        -- (ENTER_CMD).  dip_switch(0)=sw1 (LSB) .. dip_switch(7)=sw8 (MSB).
         ------------------------------------------------------------------
         dip_switch      : in  std_logic_vector(DATA_WIDTH-1 downto 0);
 
         ------------------------------------------------------------------
-        -- LED row (8) - shows the data register value (homework requirement)
+        -- LED row (8) - data register value (or live DIP preview in
+        -- ENTER_DATA). led(0) = bit 0 = site 93.
         ------------------------------------------------------------------
         led             : out std_logic_vector(7 downto 0);
 
@@ -73,6 +80,8 @@ entity command_interpreter_top is
 
         ------------------------------------------------------------------
         -- PMOD / external logic connector (8) - oscilloscope outputs only.
+        -- NOTE: the reference implementation SKIPS the PMOD; it is left
+        -- here for the team to wire if the assignment wants scope signals.
         ------------------------------------------------------------------
         pmod            : out std_logic_vector(7 downto 0)
     );
@@ -85,10 +94,11 @@ architecture structural of command_interpreter_top is
     signal rst             : std_logic;                              -- global synchronous reset (active high)
 
     -- synchronized / cleaned inputs
-    signal dip_sync        : std_logic_vector(DATA_WIDTH-1 downto 0);
-    signal startstop_sync  : std_logic;
-    signal startstop_clean : std_logic;
-    signal startstop_pulse : std_logic;
+    signal dip_sync        : std_logic_vector(DATA_WIDTH-1 downto 0); -- raw, synchronized
+    signal dip_logic       : std_logic_vector(DATA_WIDTH-1 downto 0); -- polarity-corrected (active-high)
+    signal press_sync      : std_logic;
+    signal press_clean     : std_logic;
+    signal press_pulse     : std_logic;
     signal dispsel_sync    : std_logic;
     signal dispsel_clean   : std_logic;
     signal reset_sync      : std_logic;
@@ -105,20 +115,25 @@ architecture structural of command_interpreter_top is
     signal reg_freq_sel    : std_logic_vector(1 downto 0);
 
     -- FSM <-> datapath
-    signal load_cmd        : std_logic;
+    signal data_load_en    : std_logic;
+    signal cmd_load_en     : std_logic;
     signal op_en           : std_logic;
     signal op_code         : std_logic_vector(CMD_WIDTH-1 downto 0);
     signal exec_active     : std_logic;
     signal op_done         : std_logic;
-    signal state_code      : std_logic_vector(3 downto 0);
+    signal state_code      : std_logic_vector(1 downto 0);
     signal tick            : std_logic;
 
-    -- datapath output
+    -- datapath output + LED mux
     signal data_value      : std_logic_vector(DATA_WIDTH-1 downto 0);
+    signal led_value       : std_logic_vector(DATA_WIDTH-1 downto 0);
 
-    -- display nibbles
+    -- display
     signal disp_left       : std_logic_vector(3 downto 0);
     signal disp_right      : std_logic_vector(3 downto 0);
+    signal disp_left_blank : std_logic;
+    signal disp_right_blank: std_logic;
+    signal disp_right_dp   : std_logic;
 
     -- =================== component declarations =========================
     component synchronizer is
@@ -165,16 +180,19 @@ architecture structural of command_interpreter_top is
 
     component execution_fsm is
         Port ( CLK : in std_logic; RST : in std_logic;
-               START_STOP : in std_logic; CMD_VALID : in std_logic; TICK : in std_logic;
+               PRESS : in std_logic; CMD_VALID : in std_logic; TICK : in std_logic;
                CMD_CODE : in std_logic_vector(CMD_WIDTH-1 downto 0);
-               LOAD_CMD : out std_logic; OP_EN : out std_logic;
-               OP_CODE : out std_logic_vector(CMD_WIDTH-1 downto 0);
+               DATA_LOAD_EN : out std_logic; CMD_LOAD_EN : out std_logic;
+               OP_EN : out std_logic; OP_CODE : out std_logic_vector(CMD_WIDTH-1 downto 0);
                EXEC_ACTIVE : out std_logic; OP_DONE : out std_logic;
-               STATE_CODE : out std_logic_vector(3 downto 0) );
+               STATE_CODE : out std_logic_vector(1 downto 0) );
     end component;
 
     component data_register is
-        Port ( CLK : in std_logic; RST : in std_logic; OP_EN : in std_logic;
+        Port ( CLK : in std_logic; RST : in std_logic;
+               LOAD_EN : in std_logic;
+               DATA_IN : in std_logic_vector(DATA_WIDTH-1 downto 0);
+               OP_EN : in std_logic;
                OP_CODE : in std_logic_vector(CMD_WIDTH-1 downto 0);
                PAYLOAD : in std_logic_vector(DATA_WIDTH-1 downto 0);
                DATA_OUT : out std_logic_vector(DATA_WIDTH-1 downto 0) );
@@ -183,6 +201,9 @@ architecture structural of command_interpreter_top is
     component display_driver is
         Port ( LEFT_VALUE : in std_logic_vector(3 downto 0);
                RIGHT_VALUE : in std_logic_vector(3 downto 0);
+               LEFT_BLANK : in std_logic;
+               RIGHT_BLANK : in std_logic;
+               RIGHT_DP : in std_logic;
                SEG_LEFT : out std_logic_vector(7 downto 0);
                SEG_RIGHT : out std_logic_vector(7 downto 0) );
     end component;
@@ -199,41 +220,48 @@ begin
 -- ##########################################################################
 
     --------------------------------------------------------------------
-    -- Reset: synchronize the reset button. (Simple version: use its
-    -- debounced/synced level directly as the active-high reset.)
-    -- A single synchronizer is enough for a reset; add a debouncer too if
-    -- you see glitches. Polarity of the button must be confirmed on HW.
+    -- Reset: synchronize the reset button, convert to active-high rst
+    -- using the verified button polarity.
     --------------------------------------------------------------------
     sync_reset : synchronizer
         generic map ( WIDTH => 1 )
         port map ( CLK => clk_in,
                    ASYNC_IN(0) => btn_reset,
                    SYNC_OUT(0) => reset_sync );
-    rst <= reset_sync;   -- TODO confirm active level (maybe 'not reset_sync')
+    rst <= '1' when reset_sync = BTN_PRESSED else '0';
 
     --------------------------------------------------------------------
-    -- DIP switches: synchronize the whole 8-bit word
+    -- DIP switches: synchronize the whole 8-bit word, then correct the
+    -- polarity. This board's switches are active-low (DIP_ON='0'), so we
+    -- invert to get an active-high logical word ('1' = switch up/ON).
+    -- EVERYTHING downstream uses dip_logic, never the raw dip_sync.
     --------------------------------------------------------------------
     sync_dip : synchronizer
         generic map ( WIDTH => DATA_WIDTH )
         port map ( CLK => clk_in, ASYNC_IN => dip_switch, SYNC_OUT => dip_sync );
 
+    dip_logic <= dip_sync when DIP_ON = '1' else (not dip_sync);
+
     --------------------------------------------------------------------
-    -- Start/Stop button: sync -> debounce -> rising-edge pulse
+    -- S1 (the one operating button): sync -> debounce -> rising-edge pulse.
+    -- The edge detector turns "held" into a single 1-clock PRESS pulse, so
+    -- each physical press advances the FSM exactly one phase.
     --------------------------------------------------------------------
     sync_ss : synchronizer
         generic map ( WIDTH => 1 )
-        port map ( CLK => clk_in, ASYNC_IN(0) => btn_start_stop, SYNC_OUT(0) => startstop_sync );
+        port map ( CLK => clk_in, ASYNC_IN(0) => btn_start_stop, SYNC_OUT(0) => press_sync );
 
     deb_ss : debouncer
-        port map ( CLK => clk_in, RST => rst, NOISY_IN => startstop_sync, CLEAN_OUT => startstop_clean );
+        port map ( CLK => clk_in, RST => rst, NOISY_IN => press_sync, CLEAN_OUT => press_clean );
 
     edge_ss : edge_detector
-        port map ( CLK => clk_in, RST => rst, SIG_IN => startstop_clean,
-                   RISING_PULSE => startstop_pulse, FALLING_PULSE => open );
+        port map ( CLK => clk_in, RST => rst, SIG_IN => press_clean,
+                   RISING_PULSE => press_pulse, FALLING_PULSE => open );
 
     --------------------------------------------------------------------
-    -- Display-select button: sync -> debounce (level is enough)
+    -- S2 (optional): sync + debounce. Available to pick an alternate RUN
+    -- view on the right 7-seg digit if you want one (e.g. data nibble vs
+    -- speed). The four-phase display below does not require it.
     --------------------------------------------------------------------
     sync_ds : synchronizer
         generic map ( WIDTH => 1 )
@@ -243,23 +271,23 @@ begin
         port map ( CLK => clk_in, RST => rst, NOISY_IN => dispsel_sync, CLEAN_OUT => dispsel_clean );
 
     --------------------------------------------------------------------
-    -- Command decoder (combinational)
+    -- Command decoder (combinational) - works on the corrected dip_logic
     --------------------------------------------------------------------
     u_decoder : command_decoder
-        port map ( DIP_VALUE => dip_sync,
+        port map ( DIP_VALUE => dip_logic,
                    CMD_CODE => dec_cmd_code, PAYLOAD => dec_payload,
                    FREQ_SEL => dec_freq_sel, CMD_VALID => dec_cmd_valid );
 
     --------------------------------------------------------------------
-    -- Command register (stores the selected command)
+    -- Command register (captured in ENTER_CMD on cmd_load_en)
     --------------------------------------------------------------------
     u_cmdreg : command_register
-        port map ( CLK => clk_in, RST => rst, LOAD_EN => load_cmd,
+        port map ( CLK => clk_in, RST => rst, LOAD_EN => cmd_load_en,
                    CMD_CODE_IN => dec_cmd_code, PAYLOAD_IN => dec_payload, FREQ_SEL_IN => dec_freq_sel,
                    CMD_CODE_OUT => reg_cmd_code, PAYLOAD_OUT => reg_payload, FREQ_SEL_OUT => reg_freq_sel );
 
     --------------------------------------------------------------------
-    -- Repeat-rate tick generator (runs while the FSM is active)
+    -- Repeat-rate tick generator (runs only while EXEC_ACTIVE in RUN)
     --------------------------------------------------------------------
     u_tick : tick_generator
         generic map ( CLK_HZ => CLK_HZ )
@@ -267,45 +295,69 @@ begin
                    FREQ_SEL => reg_freq_sel, TICK => tick );
 
     --------------------------------------------------------------------
-    -- Execution FSM
+    -- Execution FSM (four phases)
     --------------------------------------------------------------------
     u_fsm : execution_fsm
         port map ( CLK => clk_in, RST => rst,
-                   START_STOP => startstop_pulse, CMD_VALID => dec_cmd_valid, TICK => tick,
+                   PRESS => press_pulse, CMD_VALID => dec_cmd_valid, TICK => tick,
                    CMD_CODE => reg_cmd_code,
-                   LOAD_CMD => load_cmd, OP_EN => op_en, OP_CODE => op_code,
+                   DATA_LOAD_EN => data_load_en, CMD_LOAD_EN => cmd_load_en,
+                   OP_EN => op_en, OP_CODE => op_code,
                    EXEC_ACTIVE => exec_active, OP_DONE => op_done, STATE_CODE => state_code );
 
     --------------------------------------------------------------------
-    -- Data register / data path
+    -- Data register / data path. Loads the live DIP word in ENTER_DATA
+    -- (data_load_en), otherwise performs the stored command on each op.
     --------------------------------------------------------------------
     u_data : data_register
-        port map ( CLK => clk_in, RST => rst, OP_EN => op_en,
-                   OP_CODE => op_code, PAYLOAD => reg_payload, DATA_OUT => data_value );
+        port map ( CLK => clk_in, RST => rst,
+                   LOAD_EN => data_load_en, DATA_IN => dip_logic,
+                   OP_EN => op_en, OP_CODE => op_code, PAYLOAD => reg_payload,
+                   DATA_OUT => data_value );
 
     --------------------------------------------------------------------
-    -- LED row shows the data register value
+    -- LED row: preview the live DIP value while entering data, otherwise
+    -- show the data register. Then apply the verified LED polarity.
     --------------------------------------------------------------------
-    led <= data_value;   -- TODO confirm LED polarity on hardware
+    led_value <= dip_logic when state_code = ST_ENTER_DATA else data_value;
+    led <= led_value when LED_ON = '1' else (not led_value);
 
     --------------------------------------------------------------------
-    -- 7-segment view selection (Person C):
-    --   default: left = command code, right = low nibble of data.
-    --   Use dispsel_clean to switch the right digit between data low
-    --   nibble / data high nibble / state code, etc.
+    -- 7-segment content per phase:
+    --   ENTER_DATA : left = 'd', right blank
+    --   ENTER_CMD  : left = 'C', right blank
+    --   READY      : left = command code, right = speed
+    --   RUN        : left = command code, right = speed, right dp lit
     --------------------------------------------------------------------
-    disp_left  <= reg_cmd_code;                 -- show stored command on left digit
-    disp_right <= data_value(3 downto 0)        -- TODO: use dispsel_clean to pick view
-                  when dispsel_clean = '0'
-                  else data_value(7 downto 4);
+    display_sel : process(state_code, reg_cmd_code, reg_freq_sel, exec_active)
+    begin
+        -- defaults: show command code + speed, both digits visible
+        disp_left        <= "0"  & reg_cmd_code;   -- command 0..7 as a hex digit
+        disp_right       <= "00" & reg_freq_sel;   -- speed 0..3 as a hex digit
+        disp_left_blank  <= '0';
+        disp_right_blank <= '0';
+        disp_right_dp    <= exec_active;            -- dp lit only in RUN
+
+        case state_code is
+            when ST_ENTER_DATA =>
+                disp_left        <= x"D";           -- 'd'
+                disp_right_blank <= '1';
+            when ST_ENTER_CMD =>
+                disp_left        <= x"C";           -- 'C'
+                disp_right_blank <= '1';
+            when others =>                          -- READY / RUN
+                null;
+        end case;
+    end process display_sel;
 
     u_disp : display_driver
         port map ( LEFT_VALUE => disp_left, RIGHT_VALUE => disp_right,
+                   LEFT_BLANK => disp_left_blank, RIGHT_BLANK => disp_right_blank,
+                   RIGHT_DP => disp_right_dp,
                    SEG_LEFT => seg_left, SEG_RIGHT => seg_right );
 
     --------------------------------------------------------------------
-    -- PMOD oscilloscope outputs
-    --   STATUS_SIGNAL: pick something useful to watch, e.g. the tick.
+    -- PMOD oscilloscope outputs (optional - reference design omits these)
     --------------------------------------------------------------------
     u_pmod : pmod_out
         port map ( COMMAND_VALID => dec_cmd_valid, EXECUTE_ACTIVE => exec_active,

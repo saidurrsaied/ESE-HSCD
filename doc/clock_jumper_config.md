@@ -24,3 +24,9 @@ required** for normal operation.
 > NE555 `slow_clock` instead of the internal `tick_generator`, document the
 > exact jumper positions here and remember those inputs are asynchronous and
 > must be synchronized (see `synchronizer.vhd`).
+
+**Finding (from the reference):** the NE555 `slow_clock` has a button, but it is a
+**single-step** button (one pulse per press) selected by a jumper — it does **not**
+set the slow-clock frequency (that is a trimmer pot, ~3–20 Hz). So it cannot be used
+as a "change the repeat rate" control; generating the rate inside the FPGA is the
+right call.

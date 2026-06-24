@@ -10,12 +10,13 @@
 --    so it effectively runs at the slow rate while still being fully
 --    synchronous to clk_in.
 --
---    FREQ_SEL (2 bit) selects one of four repeat rates, e.g.
---        "00" ->  1 Hz
---        "01" ->  2 Hz
---        "10" ->  5 Hz
---        "11" -> 10 Hz
---    (final numbers are up to you - document them in doc/requirements.md)
+--    FREQ_SEL (2 bit) selects one of four repeat rates. The reference design
+--    uses powers of two (all clearly visible on the LEDs):
+--        "00" -> 1 Hz
+--        "01" -> 2 Hz
+--        "10" -> 4 Hz
+--        "11" -> 8 Hz
+--    (documented in doc/requirements.md - keep them in sync)
 --
 --  ALTERNATIVE: the board also has a hardware "jumper_clock" (1 Hz..1 MHz)
 --  and the NE555 "slow_clock". Those could drive the repeat rate too, but
@@ -59,10 +60,10 @@ begin
     -- IMPLEMENTATION GUIDE (Person A):
     --
     -- 1) Map FREQ_SEL to a divisor (combinational), e.g.
-    --        "00" -> divisor <= to_unsigned(CLK_HZ / 1  - 1, 32);  -- 1 Hz
-    --        "01" -> divisor <= to_unsigned(CLK_HZ / 2  - 1, 32);  -- 2 Hz
-    --        "10" -> divisor <= to_unsigned(CLK_HZ / 5  - 1, 32);  -- 5 Hz
-    --        "11" -> divisor <= to_unsigned(CLK_HZ / 10 - 1, 32);  -- 10 Hz
+    --        "00" -> divisor <= to_unsigned(CLK_HZ / 1 - 1, 32);  -- 1 Hz
+    --        "01" -> divisor <= to_unsigned(CLK_HZ / 2 - 1, 32);  -- 2 Hz
+    --        "10" -> divisor <= to_unsigned(CLK_HZ / 4 - 1, 32);  -- 4 Hz
+    --        "11" -> divisor <= to_unsigned(CLK_HZ / 8 - 1, 32);  -- 8 Hz
     --
     -- 2) In a clocked process:
     --        if RST='1' or ENABLE='0' then counter <= 0; TICK <= '0';

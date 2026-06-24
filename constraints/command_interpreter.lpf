@@ -9,6 +9,11 @@
 ##  NOTE: The component names below (e.g. "dip_switch[0]") must match the
 ##        top-level entity port names exactly. If you rename a port, fix it
 ##        here too.
+##
+##  POLARITY is NOT set here. Buttons / DIP / LEDs are active-LOW and the
+##  7-seg is active-high on this board (verified) - that is handled in RTL
+##  via the polarity constants in command_pkg.vhd (BTN_PRESSED / DIP_ON /
+##  LED_ON / SEG_ON). Do not try to "fix" inverted behaviour in this file.
 ## ==========================================================================
 
 ## --- global default I/O standard ------------------------------------------

@@ -17,9 +17,10 @@ Files: `synchronizer.vhd`, `debouncer.vhd`, `edge_detector.vhd`, `tick_generator
 ## Person B — Core Logic (the heart)
 Files: `command_decoder.vhd`, `command_register.vhd`, `data_register.vhd`, `execution_fsm.vhd`
 - Decode DIP switches into a command + payload + freq select.
-- Store the command in the command register on load.
-- Implement the 8 operations in the data path.
-- Implement the FSM (idle / load / run, repeat on tick, stop on 2nd press).
+- Store the command in the command register on `cmd_load_en`.
+- Implement the 8 operations + the DIP data-load path in the data register.
+- Implement the **four-phase FSM** (enter-data → enter-cmd → ready → run,
+  repeat on tick, stop on press in RUN; publish STATE_CODE).
 - Deliver: these 4 modules + `execution_fsm_tb.vhd` + `data_register_tb.vhd`.
 
 ## Person C — Output & Integration
